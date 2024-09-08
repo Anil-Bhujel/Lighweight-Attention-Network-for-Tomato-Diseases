@@ -1,0 +1,158 @@
+###lw_resnet20 model###
+Total params: 1,424,043
+Trainable params: 1,415,499
+Non-trainable params: 8,544
+
+Training time: 3:45:47.046555
+
+Testing time: 0:00:01.514766
+
+FLOPS: 0.439 G
+
+              precision    recall  f1-score   support
+
+           0       1.00      1.00      1.00       214
+           1       0.95      0.99      0.97       100
+           2       0.99      1.00      0.99        80
+           3       1.00      0.97      0.99       160
+           4       0.98      0.96      0.97       192
+           5       0.99      0.98      0.98        96
+           6       1.00      1.00      1.00        38
+           7       0.97      1.00      0.99       178
+           8       0.99      0.99      0.99       169
+           9       0.99      0.98      0.98       141
+          10       1.00      1.00      1.00       537
+
+    accuracy                           0.99      1905
+   macro avg       0.99      0.99      0.99      1905
+weighted avg       0.99      0.99      0.99      1905
+
+test accuracy:  0.988976377952756
+
+
+##lw_resnet20_cbam###
+Total params: 1,440,813
+Trainable params: 1,432,269
+Non-trainable params: 8,544
+
+Training time: 3:45:16.172146
+
+Testing time: 0:00:01.741738
+
+FLOPS: 0.44 G
+
+              precision    recall  f1-score   support
+
+           0       1.00      1.00      1.00       214
+           1       1.00      0.99      0.99       100
+           2       1.00      1.00      1.00        80
+           3       0.99      1.00      1.00       160
+           4       0.99      1.00      0.99       192
+           5       1.00      0.99      0.99        96
+           6       1.00      1.00      1.00        38
+           7       1.00      0.99      1.00       178
+           8       1.00      0.99      1.00       169
+           9       0.99      0.99      0.99       141
+          10       1.00      1.00      1.00       537
+
+    accuracy                           1.00      1905
+   macro avg       1.00      1.00      1.00      1905
+weighted avg       1.00      1.00      1.00      1905
+
+test accuracy:  0.9968503937007874
+
+
+##lw_resnet20_se##
+Total params: 1,440,715
+Trainable params: 1,432,171
+Non-trainable params: 8,544
+
+Training time: 3:43:24.023397
+
+Testing time: 0:00:01.865297
+
+FLOPS: 0.44 G
+
+              precision    recall  f1-score   support
+
+           0       0.98      1.00      0.99       214
+           1       0.97      0.98      0.98       100
+           2       1.00      1.00      1.00        80
+           3       1.00      0.97      0.98       160
+           4       0.96      1.00      0.98       192
+           5       1.00      0.99      0.99        96
+           6       1.00      1.00      1.00        38
+           7       0.99      0.99      0.99       178
+           8       0.99      0.99      0.99       169
+           9       0.97      0.93      0.95       141
+          10       1.00      1.00      1.00       537
+
+    accuracy                           0.99      1905
+   macro avg       0.99      0.99      0.99      1905
+weighted avg       0.99      0.99      0.99      1905
+
+test accuracy:  0.9884514435695538
+
+##lw_resnet20_sa##
+Total params: 1,572,075
+Trainable params: 1,563,531
+Non-trainable params: 8,544
+
+Training time: 3:44:14.252622
+
+Testing time: 0:00:01.829479
+
+FLOPS: 0.553 G
+
+              precision    recall  f1-score   support
+
+           0       1.00      1.00      1.00       214
+           1       1.00      0.97      0.98       100
+           2       1.00      1.00      1.00        80
+           3       1.00      0.99      1.00       160
+           4       0.99      1.00      0.99       192
+           5       1.00      0.98      0.99        96
+           6       1.00      1.00      1.00        38
+           7       0.98      1.00      0.99       178
+           8       0.99      0.98      0.99       169
+           9       0.97      1.00      0.99       141
+          10       1.00      0.99      1.00       537
+
+    accuracy                           0.99      1905
+   macro avg       0.99      0.99      0.99      1905
+weighted avg       0.99      0.99      0.99      1905
+
+test accuracy:  0.9931758530183727
+
+
+##lw_resnet20_da_module##
+Total params: 1,505,963
+Trainable params: 1,497,419
+Non-trainable params: 8,544
+
+Training time: 3:46:27.275369
+
+Testing time: 0:00:01.875280
+
+FLOPS: 0.587 G
+
+              precision    recall  f1-score   support
+
+           0       0.98      1.00      0.99       214
+           1       0.96      0.97      0.97       100
+           2       0.99      1.00      0.99        80
+           3       1.00      0.97      0.99       160
+           4       0.99      0.95      0.97       192
+           5       1.00      1.00      1.00        96
+           6       1.00      1.00      1.00        38
+           7       0.96      1.00      0.98       178
+           8       1.00      0.97      0.98       169
+           9       0.95      0.96      0.96       141
+          10       1.00      1.00      1.00       537
+
+    accuracy                           0.99      1905
+   macro avg       0.98      0.98      0.98      1905
+weighted avg       0.99      0.99      0.99      1905
+
+test accuracy:  0.9858267716535433
+
