@@ -1,0 +1,346 @@
+def identity_block(X, f, filters, stage, block, attention_module=None):
+    """
+    Implementation of the identity block for a RseNet model
+    
+    Arguments:
+    X -- input tensor of shape (m, n_H_prev, n_W_prev, n_C_prev)
+    f -- integer, specifying the shape of the middle CONV's window for the main path
+    filters -- python list of integers, defining the number of filters in the CONV layers of the main path
+    stage -- integer, used to name the layers, depending on their position in the network
+    block -- string/character, used to name the layers, depending on their position in the network
+    
+    Returns:
+    X -- output of the identity block, tensor of shape (n_H, n_W, n_C)
+    """
+    
+    # defining name basis
+    conv_name_base = 'res' + str(stage) + block + '_branch'
+    bn_name_base = 'bn' + str(stage) + block + '_branch'
+    
+    # Retrieve Filters
+    F1, F2, F3 = filters
+    
+    # Save the input value. You'll need this later to add back to the main path. 
+    X_shortcut = X
+    
+    # First component of main path
+    X = Conv2D(filters = F1, kernel_size = (1, 1), strides = (1,1), padding = 'valid', name = conv_name_base + '2a', kernel_initializer = glorot_uniform(seed=0))(X)
+    X = BatchNormalization(axis = 3, name = bn_name_base + '2a')(X)
+    X = Activation('relu')(X)
+
+    
+    # Second component of main path (≈3 lines)
+    X = Conv2D(filters = F2, kernel_size = (f, f), strides = (1,1), padding = 'same', name = conv_name_base + '2b', kernel_initializer = glorot_uniform(seed=0))(X)
+    X = BatchNormalization(axis = 3, name = bn_name_base + '2b')(X)
+    X = Activation('relu')(X)
+
+    # Third component of main path (≈2 lines)
+    X = Conv2D(filters = F3, kernel_size = (1, 1), strides = (1,1), padding = 'valid', name = conv_name_base + '2c', kernel_initializer = glorot_uniform(seed=0))(X)
+    X = BatchNormalization(axis = 3, name = bn_name_base + '2c')(X)
+
+    # attention module
+    #if attention_module is not None:
+    #    Y = attach_attention_module(X, attention_module)
+    #X = Add()([X_shortcut, Y])
+    
+    # Final step: Add shortcut value to main path, and pass it through a RELU activation (≈2 lines)
+    X = Add()([X, X_shortcut])
+    X = Activation('relu')(X)
+    
+    
+    return X
+
+def convolutional_block(X, f, filters, stage, block, s = 2, attention_module=None):
+    """
+    Implementation of the convolutional block as defined in Figure 4
+    
+    Arguments:
+    X -- input tensor of shape (m, n_H_prev, n_W_prev, n_C_prev)
+    f -- integer, specifying the shape of the middle CONV's window for the main path
+    filters -- python list of integers, defining the number of filters in the CONV layers of the main path
+    stage -- integer, used to name the layers, depending on their position in the network
+    block -- string/character, used to name the layers, depending on their position in the network
+    s -- Integer, specifying the stride to be used
+    
+    Returns:
+    X -- output of the convolutional block, tensor of shape (n_H, n_W, n_C)
+    """
+    
+    # defining name basis
+    conv_name_base = 'res' + str(stage) + block + '_branch'
+    bn_name_base = 'bn' + str(stage) + block + '_branch'
+    
+    # Retrieve Filters
+    F1, F2, F3 = filters
+    
+    # Save the input value
+    X_shortcut = X
+
+
+    ##### MAIN PATH #####
+    # First component of main path 
+    X = Conv2D(F1, (1, 1), strides = (s,s), name = conv_name_base + '2a', kernel_initializer = glorot_uniform(seed=0))(X)
+    X = BatchNormalization(axis = 3, name = bn_name_base + '2a')(X)
+    X = Activation('relu')(X)
+
+    # Second component of main path (≈3 lines)
+    X = Conv2D(filters = F2, kernel_size = (f, f), strides = (1,1), padding = 'same', name = conv_name_base + '2b', kernel_initializer = glorot_uniform(seed=0))(X)
+    X = BatchNormalization(axis = 3, name = bn_name_base + '2b')(X)
+    X = Activation('relu')(X)
+
+
+    # Third component of main path (≈2 lines)
+    X = Conv2D(filters = F3, kernel_size = (1, 1), strides = (1,1), padding = 'valid', name = conv_name_base + '2c', kernel_initializer = glorot_uniform(seed=0))(X)
+    X = BatchNormalization(axis = 3, name = bn_name_base + '2c')(X)
+
+
+    ##### SHORTCUT PATH #### (≈2 lines)
+    X_shortcut = Conv2D(filters = F3, kernel_size = (1, 1), strides = (s,s), padding = 'valid', name = conv_name_base + '1',
+                        kernel_initializer = glorot_uniform(seed=0))(X_shortcut)
+    X_shortcut = BatchNormalization(axis = 3, name = bn_name_base + '1')(X_shortcut)
+
+    # attention modules added
+    if attention_module is not None:
+        X = attach_attention_module(X, attention_module)
+    X = Add()([X, X_shortcut])
+    
+    # Final step: Add shortcut value to main path, and pass it through a RELU activation (≈2 lines)
+    #X = Add()([X, X_shortcut])
+    X = Activation('relu')(X)
+    
+    
+    return X
+
+def LW_ResNet20(input_shape=(224, 224, 3), classes=11, attention_module=None):
+    """
+    Implementation of the custom ResNet20 the following architecture:
+    CONV2D -> BATCHNORM -> RELU -> MAXPOOL -> CONVBLOCK -> CONVBLOCK -> IDBLOCK*1
+    -> CONVBLOCK -> IDBLOCK*1 -> CONVBLOCK -> AVGPOOL -> TOPLAYER
+
+    Arguments:
+    input_shape -- shape of the images of the dataset
+    classes -- integer, number of classes
+
+    Returns:
+    model -- a Model() instance in Keras
+    """
+
+    # Define the input as a tensor with shape input_shape
+    X_input = Input(input_shape)
+
+    # Zero-Padding
+    X = ZeroPadding2D((3, 3))(X_input)
+
+    # Stage 1
+    X = Conv2D(16, (7, 7), strides=(2, 2), name='conv1', kernel_initializer=glorot_uniform(seed=0))(X)
+    X = BatchNormalization(axis=3, name='bn_conv1')(X)
+    X = Activation('relu')(X)
+    X = MaxPooling2D((3, 3), strides=(2, 2))(X)
+
+    # Stage 2
+    X = convolutional_block(X, f=3, filters=[16, 16, 64], stage=2, block='a', s=1)
+   
+    ### START CODE HERE ###
+
+    # Stage 3 (≈4 lines)
+    X = convolutional_block(X, f = 3, filters = [32, 32, 128], stage = 3, block='a', s = 2)
+    X = identity_block(X, 3, [32, 32, 128], stage=3, block='b')
+       
+    # Stage 4 (≈6 lines)
+    X = convolutional_block(X, f = 3, filters = [64, 64, 256], stage = 4, block='a', s = 2, attention_module=attention_module)
+    X = identity_block(X, 3, [64, 64, 256], stage=4, block='b')
+   
+    # Stage 5 (≈3 lines)
+    X = convolutional_block(X, f = 3, filters = [256, 256, 1024], stage = 5, block='a', s = 2)
+    #X = identity_block(X, 3, [512, 512, 2048], stage=5, block='b')
+    #X = identity_block(X, 3, [512, 512, 2048], stage=5, block='c')
+
+    # AVGPOOL (≈1 line). Use "X = AveragePooling2D(...)(X)"
+    #X = AveragePooling2D((2,2), name="avg_pool")(X)
+    X = GlobalAveragePooling2D(name="avg_pool")(X)
+
+    ### END CODE HERE ###
+
+    # output layer
+    #X = Flatten()(X)
+    X = Dense(classes, activation='softmax', name='fc_' + str(classes), kernel_initializer = glorot_uniform(seed=0))(X)
+    
+    # for naming the model
+    if attention_module is not None:
+        attention_name = '_'+attention_module.split('_')[0]
+    else:
+        attention_name = ''
+    # Create model
+    model = Model(inputs = X_input, outputs = X, name='LW_ResNet20'+attention_name)
+
+    return model
+
+model = LW_ResNet20(input_shape = (256, 256, 3), classes = 11, attention_module=None)
+model.summary()
+
+Model: "LW_ResNet20"
+__________________________________________________________________________________________________
+Layer (type)                    Output Shape         Param #     Connected to                     
+==================================================================================================
+input_4 (InputLayer)            [(None, 256, 256, 3) 0                                            
+__________________________________________________________________________________________________
+zero_padding2d_3 (ZeroPadding2D (None, 262, 262, 3)  0           input_4[0][0]                    
+__________________________________________________________________________________________________
+conv1 (Conv2D)                  (None, 128, 128, 16) 2368        zero_padding2d_3[0][0]           
+__________________________________________________________________________________________________
+bn_conv1 (BatchNormalization)   (None, 128, 128, 16) 64          conv1[0][0]                      
+__________________________________________________________________________________________________
+activation_54 (Activation)      (None, 128, 128, 16) 0           bn_conv1[0][0]                   
+__________________________________________________________________________________________________
+max_pooling2d_3 (MaxPooling2D)  (None, 63, 63, 16)   0           activation_54[0][0]              
+__________________________________________________________________________________________________
+res2a_branch2a (Conv2D)         (None, 63, 63, 16)   272         max_pooling2d_3[0][0]            
+__________________________________________________________________________________________________
+bn2a_branch2a (BatchNormalizati (None, 63, 63, 16)   64          res2a_branch2a[0][0]             
+__________________________________________________________________________________________________
+activation_55 (Activation)      (None, 63, 63, 16)   0           bn2a_branch2a[0][0]              
+__________________________________________________________________________________________________
+res2a_branch2b (Conv2D)         (None, 63, 63, 16)   2320        activation_55[0][0]              
+__________________________________________________________________________________________________
+bn2a_branch2b (BatchNormalizati (None, 63, 63, 16)   64          res2a_branch2b[0][0]             
+__________________________________________________________________________________________________
+activation_56 (Activation)      (None, 63, 63, 16)   0           bn2a_branch2b[0][0]              
+__________________________________________________________________________________________________
+res2a_branch2c (Conv2D)         (None, 63, 63, 64)   1088        activation_56[0][0]              
+__________________________________________________________________________________________________
+res2a_branch1 (Conv2D)          (None, 63, 63, 64)   1088        max_pooling2d_3[0][0]            
+__________________________________________________________________________________________________
+bn2a_branch2c (BatchNormalizati (None, 63, 63, 64)   256         res2a_branch2c[0][0]             
+__________________________________________________________________________________________________
+bn2a_branch1 (BatchNormalizatio (None, 63, 63, 64)   256         res2a_branch1[0][0]              
+__________________________________________________________________________________________________
+add_18 (Add)                    (None, 63, 63, 64)   0           bn2a_branch2c[0][0]              
+                                                                 bn2a_branch1[0][0]               
+__________________________________________________________________________________________________
+activation_57 (Activation)      (None, 63, 63, 64)   0           add_18[0][0]                     
+__________________________________________________________________________________________________
+res3a_branch2a (Conv2D)         (None, 32, 32, 32)   2080        activation_57[0][0]              
+__________________________________________________________________________________________________
+bn3a_branch2a (BatchNormalizati (None, 32, 32, 32)   128         res3a_branch2a[0][0]             
+__________________________________________________________________________________________________
+activation_58 (Activation)      (None, 32, 32, 32)   0           bn3a_branch2a[0][0]              
+__________________________________________________________________________________________________
+res3a_branch2b (Conv2D)         (None, 32, 32, 32)   9248        activation_58[0][0]              
+__________________________________________________________________________________________________
+bn3a_branch2b (BatchNormalizati (None, 32, 32, 32)   128         res3a_branch2b[0][0]             
+__________________________________________________________________________________________________
+activation_59 (Activation)      (None, 32, 32, 32)   0           bn3a_branch2b[0][0]              
+__________________________________________________________________________________________________
+res3a_branch2c (Conv2D)         (None, 32, 32, 128)  4224        activation_59[0][0]              
+__________________________________________________________________________________________________
+res3a_branch1 (Conv2D)          (None, 32, 32, 128)  8320        activation_57[0][0]              
+__________________________________________________________________________________________________
+bn3a_branch2c (BatchNormalizati (None, 32, 32, 128)  512         res3a_branch2c[0][0]             
+__________________________________________________________________________________________________
+bn3a_branch1 (BatchNormalizatio (None, 32, 32, 128)  512         res3a_branch1[0][0]              
+__________________________________________________________________________________________________
+add_19 (Add)                    (None, 32, 32, 128)  0           bn3a_branch2c[0][0]              
+                                                                 bn3a_branch1[0][0]               
+__________________________________________________________________________________________________
+activation_60 (Activation)      (None, 32, 32, 128)  0           add_19[0][0]                     
+__________________________________________________________________________________________________
+res3b_branch2a (Conv2D)         (None, 32, 32, 32)   4128        activation_60[0][0]              
+__________________________________________________________________________________________________
+bn3b_branch2a (BatchNormalizati (None, 32, 32, 32)   128         res3b_branch2a[0][0]             
+__________________________________________________________________________________________________
+activation_61 (Activation)      (None, 32, 32, 32)   0           bn3b_branch2a[0][0]              
+__________________________________________________________________________________________________
+res3b_branch2b (Conv2D)         (None, 32, 32, 32)   9248        activation_61[0][0]              
+__________________________________________________________________________________________________
+bn3b_branch2b (BatchNormalizati (None, 32, 32, 32)   128         res3b_branch2b[0][0]             
+__________________________________________________________________________________________________
+activation_62 (Activation)      (None, 32, 32, 32)   0           bn3b_branch2b[0][0]              
+__________________________________________________________________________________________________
+res3b_branch2c (Conv2D)         (None, 32, 32, 128)  4224        activation_62[0][0]              
+__________________________________________________________________________________________________
+bn3b_branch2c (BatchNormalizati (None, 32, 32, 128)  512         res3b_branch2c[0][0]             
+__________________________________________________________________________________________________
+add_20 (Add)                    (None, 32, 32, 128)  0           bn3b_branch2c[0][0]              
+                                                                 activation_60[0][0]              
+__________________________________________________________________________________________________
+activation_63 (Activation)      (None, 32, 32, 128)  0           add_20[0][0]                     
+__________________________________________________________________________________________________
+res4a_branch2a (Conv2D)         (None, 16, 16, 64)   8256        activation_63[0][0]              
+__________________________________________________________________________________________________
+bn4a_branch2a (BatchNormalizati (None, 16, 16, 64)   256         res4a_branch2a[0][0]             
+__________________________________________________________________________________________________
+activation_64 (Activation)      (None, 16, 16, 64)   0           bn4a_branch2a[0][0]              
+__________________________________________________________________________________________________
+res4a_branch2b (Conv2D)         (None, 16, 16, 64)   36928       activation_64[0][0]              
+__________________________________________________________________________________________________
+bn4a_branch2b (BatchNormalizati (None, 16, 16, 64)   256         res4a_branch2b[0][0]             
+__________________________________________________________________________________________________
+activation_65 (Activation)      (None, 16, 16, 64)   0           bn4a_branch2b[0][0]              
+__________________________________________________________________________________________________
+res4a_branch2c (Conv2D)         (None, 16, 16, 256)  16640       activation_65[0][0]              
+__________________________________________________________________________________________________
+res4a_branch1 (Conv2D)          (None, 16, 16, 256)  33024       activation_63[0][0]              
+__________________________________________________________________________________________________
+bn4a_branch2c (BatchNormalizati (None, 16, 16, 256)  1024        res4a_branch2c[0][0]             
+__________________________________________________________________________________________________
+bn4a_branch1 (BatchNormalizatio (None, 16, 16, 256)  1024        res4a_branch1[0][0]              
+__________________________________________________________________________________________________
+add_21 (Add)                    (None, 16, 16, 256)  0           bn4a_branch2c[0][0]              
+                                                                 bn4a_branch1[0][0]               
+__________________________________________________________________________________________________
+activation_66 (Activation)      (None, 16, 16, 256)  0           add_21[0][0]                     
+__________________________________________________________________________________________________
+res4b_branch2a (Conv2D)         (None, 16, 16, 64)   16448       activation_66[0][0]              
+__________________________________________________________________________________________________
+bn4b_branch2a (BatchNormalizati (None, 16, 16, 64)   256         res4b_branch2a[0][0]             
+__________________________________________________________________________________________________
+activation_67 (Activation)      (None, 16, 16, 64)   0           bn4b_branch2a[0][0]              
+__________________________________________________________________________________________________
+res4b_branch2b (Conv2D)         (None, 16, 16, 64)   36928       activation_67[0][0]              
+__________________________________________________________________________________________________
+bn4b_branch2b (BatchNormalizati (None, 16, 16, 64)   256         res4b_branch2b[0][0]             
+__________________________________________________________________________________________________
+activation_68 (Activation)      (None, 16, 16, 64)   0           bn4b_branch2b[0][0]              
+__________________________________________________________________________________________________
+res4b_branch2c (Conv2D)         (None, 16, 16, 256)  16640       activation_68[0][0]              
+__________________________________________________________________________________________________
+bn4b_branch2c (BatchNormalizati (None, 16, 16, 256)  1024        res4b_branch2c[0][0]             
+__________________________________________________________________________________________________
+add_22 (Add)                    (None, 16, 16, 256)  0           bn4b_branch2c[0][0]              
+                                                                 activation_66[0][0]              
+__________________________________________________________________________________________________
+activation_69 (Activation)      (None, 16, 16, 256)  0           add_22[0][0]                     
+__________________________________________________________________________________________________
+res5a_branch2a (Conv2D)         (None, 8, 8, 256)    65792       activation_69[0][0]              
+__________________________________________________________________________________________________
+bn5a_branch2a (BatchNormalizati (None, 8, 8, 256)    1024        res5a_branch2a[0][0]             
+__________________________________________________________________________________________________
+activation_70 (Activation)      (None, 8, 8, 256)    0           bn5a_branch2a[0][0]              
+__________________________________________________________________________________________________
+res5a_branch2b (Conv2D)         (None, 8, 8, 256)    590080      activation_70[0][0]              
+__________________________________________________________________________________________________
+bn5a_branch2b (BatchNormalizati (None, 8, 8, 256)    1024        res5a_branch2b[0][0]             
+__________________________________________________________________________________________________
+activation_71 (Activation)      (None, 8, 8, 256)    0           bn5a_branch2b[0][0]              
+__________________________________________________________________________________________________
+res5a_branch2c (Conv2D)         (None, 8, 8, 1024)   263168      activation_71[0][0]              
+__________________________________________________________________________________________________
+res5a_branch1 (Conv2D)          (None, 8, 8, 1024)   263168      activation_69[0][0]              
+__________________________________________________________________________________________________
+bn5a_branch2c (BatchNormalizati (None, 8, 8, 1024)   4096        res5a_branch2c[0][0]             
+__________________________________________________________________________________________________
+bn5a_branch1 (BatchNormalizatio (None, 8, 8, 1024)   4096        res5a_branch1[0][0]              
+__________________________________________________________________________________________________
+add_23 (Add)                    (None, 8, 8, 1024)   0           bn5a_branch2c[0][0]              
+                                                                 bn5a_branch1[0][0]               
+__________________________________________________________________________________________________
+activation_72 (Activation)      (None, 8, 8, 1024)   0           add_23[0][0]                     
+__________________________________________________________________________________________________
+avg_pool (GlobalAveragePooling2 (None, 1024)         0           activation_72[0][0]              
+__________________________________________________________________________________________________
+fc_11 (Dense)                   (None, 11)           11275       avg_pool[0][0]                   
+==================================================================================================
+Total params: 1,424,043
+Trainable params: 1,415,499
+Non-trainable params: 8,544
+__________________________________
